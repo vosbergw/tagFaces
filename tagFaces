@@ -20,275 +20,296 @@ Copyright 2012 Wayne Vosberg <wayne.vosberg@mindtunnel.com>
 
 '''
 
-import	argparse
-import	os
-import	re
-import	sys
-import	fnmatch
-import Image, ImageDraw, ImageFont
-
+import  argparse
+import  os
+import  re
+import  sys
+import  fnmatch
+import  Image
+import  ImageDraw
+import  ImageFont
+import  subprocess
 from picasa3meta import thumbindex, pmpinfo
-import subprocess
 
 
-
-def locatedir(pattern,start):
-	'''Search for a directory'''
-	for path, dirs, files in os.walk(os.path.abspath(start)):
-		for d in fnmatch.filter(dirs, pattern):
-			yield os.path.join(path, d)
-
+def locatedir(pattern, start):
+    '''Search for a directory'''
+    for path, dirs, files in os.walk(os.path.abspath(start)):
+        for d in fnmatch.filter(dirs, pattern):
+            yield os.path.join(path, d)
 
 
-def locate(pattern,start):
-	'''Search for a file'''
-	for path, dirs, files in os.walk(os.path.abspath(start)):
-		for filename in fnmatch.filter(files, pattern):
-			yield os.path.join(path, filename)
-
+def locate(pattern, start):
+    '''Search for a file'''
+    for path, dirs, files in os.walk(os.path.abspath(start)):
+        for filename in fnmatch.filter(files, pattern):
+            yield os.path.join(path, filename)
 
 
 def main():
-	'''
+    '''
 
-	tagFaces --
+    tagFaces --
 
-	'''
+    '''
 
-	parser = argparse.ArgumentParser(
-		description="Scan all images and display the tagged faces.")
-	parser.add_argument(
-		'--path', action="store", dest='path', type=str, default="",
-		help="Path to the Picasa database files. " \
-		"If left off, search $HOME for directory Picasa3 containing " \
-		"directories db3 and contacts")
-	'''
-	parser.add_argument(
-		'--photos', action="store", dest="source", type=str, required=True,
-		help="Path to the photo tree.  This directory tree will be "\
-		"duplicated at <dest>/<basename of tree>.meta and all meta data "\
-		"from the pmp databases, .picasa.ini files and exif info will be "\
-		"placed there.\n**NOTHING UNDER THIS DIRECTORY WILL BE MODIFIED**")
-	'''
-	
-	parser.add_argument(
-		'--tweak', action="store", dest="tweak", type=str, default="",
-		help="Adjust the path names used when searching thumbindex.db. "\
-		"What is stored in thumbindex.db is the full path "\
-		"relative to the system it was created on.  If you have copied the "\
-		"photo tree and Picasa3 files to another system or have them "\
-		"remotely mounted with a different path you can use --tweak to "\
-		"adjust the path. \nexample:\n\t"\
-		"--tweak '/my/path/Pictures':'/thumbindex/path/Pictures'" )
-	
-	args = parser.parse_args()
+    parser = argparse.ArgumentParser(
+        description="Scan all images and display the tagged faces.")
+    parser.add_argument(
+        '--path', action="store", dest='path', type=str, default="",
+        help="Path to the Picasa database files. " \
+        "If left off, search $HOME for directory Picasa3 containing " \
+        "directories db3 and contacts")
 
-	
-	if args.path == "":	# Picasa3/db3 not specified, look for it under $HOME
-		for path in locatedir("Picasa3",os.environ['HOME']):
-			if os.path.exists(os.path.join(path,"db3")) and \
-				os.path.exists(os.path.join(path,"contacts")):
-				args.path=path
-				break
+    '''
+    parser.add_argument(
+        '--photos', action="store", dest="source", type=str, required=True,
+        help="Path to the photo tree.  This directory tree will be "\
+        "duplicated at <dest>/<basename of tree>.meta and all meta data "\
+        "from the pmp databases, .picasa.ini files and exif info will be "\
+        "placed there.\n**NOTHING UNDER THIS DIRECTORY WILL BE MODIFIED**")
+    '''
 
+    parser.add_argument(
+        '--tweak', action="store", dest="tweak", type=str, default="",
+        help="Adjust the path names used when searching thumbindex.db. "\
+        "What is stored in thumbindex.db is the full path "\
+        "relative to the system it was created on.  If you have copied the "\
+        "photo tree and Picasa3 files to another system or have them "\
+        "remotely mounted with a different path you can use --tweak to "\
+        "adjust the path. \nexample:\n\t"\
+        "--tweak '/my/path/Pictures':'/thumbindex/path/Pictures'")
 
-	# make sure the Picasa3 db files exist
-	try:
-		thumbfile = locate("thumbindex.db",args.path).next()
-	except:
-		print "error: thumbindex.db was not found in any subdirectory under %s"%args.path
-		return 2
+    args = parser.parse_args()
 
+    if args.path == "":  # Picasa3/db3 not specified, look for it under $HOME
+        for path in locatedir("Picasa3", os.environ['HOME']):
+            if os.path.exists(os.path.join(path, "db3")) and \
+                os.path.exists(os.path.join(path, "contacts")):
+                args.path = path
+                break
 
-	if args.path == "":
-		print "no Picasa3 directory found in %s"%os.environ['HOME']
-		print "please specify using --path"
-	else:
-		if args.tweak != "":
-			myPath, thumbPath = args.tweak.split(':')
-		else:
-			myPath = ""
-			thumbPath = ""	
-					
-		print "Picasa3 path: %s"%args.path
-		print "      thumbs: %s"%thumbfile
-		print "      myPath: %s"%myPath
-		print "   thumbPath: %s"%thumbPath
-		
-		try:			
-			print " reading imagedata pmp files ...",
-			sys.stdout.flush()
-			imageDB = pmpinfo.PmpInfo(os.path.join(args.path,'db3'),'imagedata')
-			print "done"
-			print " reading albumdata pmp files ...",
-			sys.stdout.flush()
-			albumDB = pmpinfo.PmpInfo(os.path.join(args.path,'db3'),'albumdata')
-			print "done"
-			
-			print "      reading thumbindex file ...",
-			sys.stdout.flush()
-			picasaDB = thumbindex.ThumbIndex(thumbfile)		  
-			print "%d records"%picasaDB.entries
-			
-			'''	
-			index = 0
-			while True:
-				try:
-					picasaDB.dump(index)
-					index += 1
-				except:
-					print sys.exc_info()
-					print 'EOF at %d'%index
-					break
-			'''
-			
-			borders = 0
-			mx = float(int(0xffff))
-			tmpDir = "/tmp/"
-			tmpImage = "tagFaces"
-			font=ImageFont.truetype("/usr/share/fonts/truetype/freefont/FreeSans.ttf", 64)
-			
-						
-			for i in range(len(picasaDB.name)):
-				#print "\n"
-				
-				
-				if picasaDB.dumpFaces(i):
-					# dumpFaces prints 'list of faces for <id>:<basename> is [ 1, 2, ...]
-					faces = []
-					aId = []
-					aName = []
-					fCount = 0
-					for f in picasaDB.getFaces(i): # getFaces returns a int list of imagedata indexes
-						print "\n\t         path = %s"%picasaDB.imageFullName(i)
-						print "\t  facequality = %#04x"%imageDB.data['facequality'][f]
-						
-						faces.append(imageDB.data['facerect'][f])
-						print "\t     facerect = %#08x"%faces[fCount]
-						print "\t facerectdata = %s"%imageDB.data['facerectdata'][f]
-						try:
-							aId.append(imageDB.data['personalbumid'][f])
-							aName.append(albumDB.data['name'][aId[fCount]])
-							print "\tpersonalbumid = %d"%aId[fCount]
-							print "\t         name = %s"%aName[fCount]
-						except:
-							print "no faces?"
-						fCount += 1
-						
-					orgImage = picasaDB.imageFullName(i)
-					
-					if myPath != "":
-						#print "replacing [%s] with [%s]"%(thumbPath,myPath)
-						imgFile = orgImage.replace(thumbPath,myPath)
-					else:
-						imgFile = orgImage
-						
-					if os.path.exists(imgFile):
-						print "\n\n\t         ************************************************************"
-						print "\t         removing %s%s*.jpg"%(tmpDir,tmpImage)			
-						for FF in locate(tmpImage+'*.jpg',tmpDir):
-							os.unlink(FF)
-						# copy the original image to tmp for work. 
-						# DON'T TOUCH ORIGINAL IMAGES!!!!
-						img = Image.open(imgFile)
-						img.save(tmpDir+tmpImage+".jpg",'JPEG')
-						del img
-						
-						img = Image.open(tmpDir+tmpImage+".jpg")
-						
-						# create a mask layer for drawing the face boxes
-						mask = Image.new('L', img.size, color=255)
-						draw = ImageDraw.Draw(mask)
-						# create a all red image for overlaying the face boxes onto the original
-						red = Image.new(img.mode, img.size, color='red')
-					
-						w, h = img.size
-						print '\t         size = %d,%s'%(w,h)
-						
-						# generate 2 arrays of face rectangle coordinates. floatFace is 0-1.0 based
-						# and intFace is scaled to image size
-						floatFace = {}
-						intFace = {}
-						print '\t        faces = [',
-						for r in faces:
-							print '%#08x :'%r,
-							x1 = float((r&0xffff000000000000)>>48)/mx
-							y1 = float((r&0x0000ffff00000000)>>32)/mx
-							x2 = float((r&0x00000000ffff0000)>>16)/mx
-							y2 = float( r&0x000000000000ffff)/mx
-							floatFace[r] = [ x1, y1, x2, y2 ]
-							intFace[r] = [ int(x1*w), int(y1*h), int(x2*w), int(y2*h) ]
-							print floatFace[r],'/',intFace[r],';',
-						print ']'
-						
-						faceCount = 0
-						for r in faces:
-							faceCount += 1
-							print '\t      face %2d ='%faceCount,intFace[r],'%d:%s'%(aId[faceCount-1],aName[faceCount-1])
-							x1,y1,x2,y2 = intFace[r]
-							
-							
-							# also save a face shot, 10% bigger in each direction: i.e. /tmp/tagFaces-0.jpg
-							xNudge = (x2-x1)/10
-							yNudge = (y2-y1)/10
-							
-							tmpFace = img.crop([ x1-xNudge,y1-yNudge,x2+xNudge,y2+yNudge ])
-							tx,ty = tmpFace.size
-							faceShot = Image.new(tmpFace.mode, ( tx*2, ty*3  ), color='white')
-							faceShot.paste(tmpFace, (tx/2,ty/9) )
-							fdraw = ImageDraw.Draw(faceShot)
-							fString = '%d : %s'%(aId[faceCount-1],aName[faceCount-1])
-							
-							fs = 32 # start with a 32 point font
-							sx,sy = fdraw.textsize(fString,font=ImageFont.truetype("/usr/share/fonts/truetype/freefont/FreeSans.ttf", fs))
-							while sx < tx*2-64: # increase font size by 50% till it is too big
-								fs = fs+fs/2
-								sx,sy = fdraw.textsize(fString,font=ImageFont.truetype("/usr/share/fonts/truetype/freefont/FreeSans.ttf", fs))
+    # make sure the Picasa3 db files exist
+    try:
+        thumbfile = locate("thumbindex.db", args.path).next()
+    except:
+        print "error: thumbindex.db was not found under %s" % args.path
+        return 2
 
-							while sx > tx*2-64: # and then decrease by 25% till it just fits
-								fs = fs-fs/4
-								sx,sy = fdraw.textsize(fString,font=ImageFont.truetype("/usr/share/fonts/truetype/freefont/FreeSans.ttf", fs))
-						
-							fdraw.text([20,ty+ty/9+ty/9], '%d : %s'%(aId[faceCount-1],aName[faceCount-1]), font=ImageFont.truetype("/usr/share/fonts/truetype/freefont/FreeSans.ttf", fs), fill='black')
-							fdraw.text([10,10],'%d'%faceCount, font=ImageFont.truetype("/usr/share/fonts/truetype/freefont/FreeSans.ttf", fs), fill='black' )
-							faceShot.save(tmpDir+tmpImage+'%02d'%faceCount+'.jpg','JPEG')
-							del faceShot
-							
-							
-							# draw the rectangle around the face. could not find anything in PIL that
-							# would let you draw a rectangle with thicker lines so I am going to draw
-							# 5 rectangles, each one pixel bigger than the last
-							for lw in range(5):
-								rect = [ x1-lw, y1-lw, x2+lw, y2+lw ]
-								draw.rectangle(rect)
-								
-							draw.text([x1-lw,y2+lw],'%d'%faceCount, font=font) # , text, fill, font, anchor)
-							
-							
-						# and finally, merge all the images. the mask layer tells where to overwrite with
-						# red (the face boxes) on the original
-						finalImage = Image.composite(img,red,mask)
-						finalImage.save(tmpDir+tmpImage+'.jpg')
-						
-						# clean up
-						del draw
-						del img
-						del red
-						del finalImage
-						
-						process = subprocess.Popen([ '/usr/bin/eog '+tmpDir+tmpImage+'*' ], shell=True) #shell=True, stdout=subprocess.PIPE)
-						process.wait()
-						
-						#img.write('test1.png')
-						#data=file('test1.png','rb').read()
-						#img=Image(Blob(data))
-						#img.write('test2.png')
-					else:
-						print "%s not found"%imgFile
+    if args.path == "":
+        print "no Picasa3 directory found in %s" % os.environ['HOME']
+        print "please specify using --path"
+    else:
+        if args.tweak != "":
+            myPath, thumbPath = args.tweak.split(':')
+        else:
+            myPath = ""
+            thumbPath = ""
 
-		except:
-			print "error: ",sys.exc_info()[0],":",sys.exc_info()[1]
-			return 3
+        print "Picasa3 path: %s" % args.path
+        print "      thumbs: %s" % thumbfile
+        print "      myPath: %s" % myPath
+        print "   thumbPath: %s" % thumbPath
+
+        try:
+            print " reading imagedata pmp files ...",
+            sys.stdout.flush()
+            imageDB = pmpinfo.PmpInfo(os.path.join(args.path, 'db3'),
+                'imagedata')
+            print "done"
+            print " reading albumdata pmp files ...",
+            sys.stdout.flush()
+            albumDB = pmpinfo.PmpInfo(os.path.join(args.path, 'db3'),
+                'albumdata')
+            print "done"
+
+            print "      reading thumbindex file ...",
+            sys.stdout.flush()
+            picasaDB = thumbindex.ThumbIndex(thumbfile)
+            print "%d records" % picasaDB.entries
+
+            '''
+            index = 0
+            while True:
+                try:
+                    picasaDB.dump(index)
+                    index += 1
+                except:
+                    print sys.exc_info()
+                    print 'EOF at %d'%index
+                    break
+            '''
+
+            mx = float(int(0xffff))
+            tmpDir = "/tmp/"
+            tmpImage = "tagFaces"
+            fontfile = "/usr/share/fonts/truetype/freefont/FreeSans.ttf"
+
+            font = ImageFont.truetype(fontfile, 64)
+
+            for i in range(len(picasaDB.name)):
+
+                if picasaDB.dumpFaces(i):
+                    faces = []
+                    aId = []
+                    aName = []
+                    fCount = 0
+                    for f in picasaDB.getFaces(i):
+                        print "\n\t         path = %s"\
+                            % picasaDB.imageFullName(i)
+                        print "\t  facequality = %#04x"\
+                            % imageDB.data['facequality'][f]
+
+                        faces.append(imageDB.data['facerect'][f])
+                        print "\t     facerect = %#08x" % faces[fCount]
+                        print "\t facerectdata = %s" % \
+                            imageDB.data['facerectdata'][f]
+                        try:
+                            aId.append(imageDB.data['personalbumid'][f])
+                            aName.append(albumDB.data['name'][aId[fCount]])
+                            print "\tpersonalbumid = %d" % aId[fCount]
+                            print "\t         name = %s" % aName[fCount]
+                        except:
+                            print "no faces?"
+                        fCount += 1
+
+                    orgImage = picasaDB.imageFullName(i)
+
+                    if myPath != "":
+                        # print "replacing [%s] with [%s]"%(thumbPath,myPath)
+                        imgFile = orgImage.replace(thumbPath, myPath)
+                    else:
+                        imgFile = orgImage
+
+                    if os.path.exists(imgFile):
+                        print "\n\n\t         ********************************"
+                        print "\t         removing %s%s*.jpg"\
+                            % (tmpDir, tmpImage)
+                        for FF in locate(tmpImage + '*.jpg', tmpDir):
+                            os.unlink(FF)
+                        # copy the original image to tmp for work.
+                        # DON'T TOUCH ORIGINAL IMAGES!!!!
+                        img = Image.open(imgFile)
+                        img.save(tmpDir + tmpImage + ".jpg", 'JPEG')
+                        del img
+
+                        img = Image.open(tmpDir + tmpImage + ".jpg")
+
+                        # create a mask layer for drawing the face boxes
+                        mask = Image.new('L', img.size, color=255)
+                        draw = ImageDraw.Draw(mask)
+                        # create a all red image for overlaying the face boxes
+                        # onto the original
+                        red = Image.new(img.mode, img.size, color='red')
+
+                        w, h = img.size
+                        print '\t         size = %d,%s' % (w, h)
+
+                        # generate 2 arrays of face rectangle coordinates.
+                        # floatFace is 0-1.0 based and intFace is scaled to
+                        # image size
+                        floatFace = {}
+                        intFace = {}
+                        print '\t        faces = [',
+                        for r in faces:
+                            print '%#08x :' % r,
+                            x1 = float((r & 0xffff000000000000) >> 48) / mx
+                            y1 = float((r & 0x0000ffff00000000) >> 32) / mx
+                            x2 = float((r & 0x00000000ffff0000) >> 16) / mx
+                            y2 = float(r & 0x000000000000ffff) / mx
+                            floatFace[r] = [x1, y1, x2, y2]
+                            intFace[r] = [int(x1 * w), int(y1 * h),
+                                          int(x2 * w), int(y2 * h)]
+                            print floatFace[r], '/', intFace[r], ';',
+                        print ']'
+
+                        faceCount = 0
+                        for r in faces:
+                            faceCount += 1
+                            print '\t      face %2d =' % faceCount, \
+                                intFace[r], '%d:%s' % (aId[faceCount - 1],
+                                aName[faceCount - 1])
+                            x1, y1, x2, y2 = intFace[r]
+
+                            # also save a face shot, 10% bigger in each
+                            # direction: i.e. /tmp/tagFaces-0.jpg
+                            xNudge = (x2 - x1) / 10
+                            yNudge = (y2 - y1) / 10
+
+                            tmpFace = img.crop([x1 - xNudge, y1 - yNudge,
+                                x2 + xNudge, y2 + yNudge])
+                            tx, ty = tmpFace.size
+                            faceShot = Image.new(tmpFace.mode,
+                                (tx * 2, ty * 3), color='white')
+                            faceShot.paste(tmpFace, (tx / 2, ty / 9))
+                            fdraw = ImageDraw.Draw(faceShot)
+                            fString = '%d : %s' % (aId[faceCount - 1], \
+                                aName[faceCount - 1])
+
+                            fs = 32  # start with a 32 point font
+                            sx, sy = fdraw.textsize(fString,
+                                font=ImageFont.truetype(fontfile, fs))
+                            while sx < tx * 2 - 64:
+                                # increase font size by 50% till it is too big
+                                fs = fs + fs / 2
+                                sx, sy = fdraw.textsize(fString,
+                                    font=ImageFont.truetype(fontfile, fs))
+
+                            while sx > tx * 2 - 64:
+                                # and then decrease by 25% till it just fits
+                                fs = fs - fs / 4
+                                sx, sy = fdraw.textsize(fString,
+                                    font=ImageFont.truetype(fontfile, fs))
+
+                            fdraw.text([20, ty + ty / 9 + ty / 9], '%d : %s'\
+                                % (aId[faceCount - 1], aName[faceCount - 1]), \
+                                font=ImageFont.truetype(fontfile, fs),
+                                fill='black')
+                            fdraw.text([10, 10], '%d' % faceCount,
+                                font=ImageFont.truetype(fontfile, fs),
+                                fill='black')
+                            faceShot.save(tmpDir + tmpImage + '%02d'\
+                                % faceCount + '.jpg', 'JPEG')
+                            del faceShot
+
+                            # draw the rectangle around the face. could not
+                            # find anything in PIL that would let you draw a
+                            # rectangle with thicker lines so I am going to
+                            # draw 5 rectangles, each one pixel bigger than
+                            # the last
+                            for lw in range(5):
+                                rect = [x1 - lw, y1 - lw, x2 + lw, y2 + lw]
+                                draw.rectangle(rect)
+
+                            draw.text([x1 - lw, y2 + lw], '%d'\
+                                % faceCount, font=font)
+
+                        # and finally, merge all the images. the mask layer
+                        # tells where to overwrite with red (the face boxes)
+                        # on the original
+                        finalImage = Image.composite(img, red, mask)
+                        finalImage.save(tmpDir + tmpImage + '.jpg')
+
+                        # clean up
+                        del draw
+                        del img
+                        del red
+                        del finalImage
+
+                        process = subprocess.Popen(['/usr/bin/eog ' + tmpDir +
+                             tmpImage + '*'], shell=True)
+                        process.wait()
+
+                        # img.write('test1.png')
+                        # data=file('test1.png','rb').read()
+                        # img=Image(Blob(data))
+                        # img.write('test2.png')
+                    else:
+                        print "%s not found" % imgFile
+
+        except:
+            print "error: ", sys.exc_info()[0], ":", sys.exc_info()[1]
+            return 3
 
 if __name__ == "__main__":
-	sys.exit(main())
+    sys.exit(main())
