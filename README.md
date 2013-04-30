@@ -24,7 +24,7 @@ list of faces for 17932:IMG_7720.JPG is  [18027, 18028]
 	personalbumid = 0
 	         name = Recently Updated
 
-	         path = /Volumes/myPassport/wayne/Pictures/Heidelberg/IMG_7720.JPG
+	         path = /full/path/to/IMG_7720.JPG
 	  facequality = 0x6a
 	     facerect = 0x96be6cf79e4678fe
 	 facerectdata = conf(0.001),pan(-55.000),leye(0.600,0.449),reye(0.608,0.448),mouth(0.604,0.467)
